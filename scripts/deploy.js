@@ -26,6 +26,17 @@ async function main() {
   const qiteSwap = await QiteSwap.deploy();
   console.log("QiteSwap deployed to:", await qiteSwap.getAddress()); // Add await here
 
+  // Deploy QiteSwap
+  console.log("Deploying QiteSwap...");
+  const QiteSwap1 = await ethers.getContractFactory("QitePool");
+  const qiteSwap1 = await QiteSwap1.deploy(
+    token1,
+    token2,
+    "Liquidity-Token1-Token2",
+    "LP-TK1-TK2"
+  );
+  console.log("QiteSwap deployed to:", await qiteSwap1.getAddress()); // Add await here
+
   // Create a pair
   console.log("Creating a liquidity pool...");
   const tx = await qiteSwap.createPairs(
