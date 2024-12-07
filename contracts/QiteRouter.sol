@@ -2,47 +2,40 @@
 pragma solidity ^0.8.20;
 
 import "./QiteSwap.sol";
+import "./IPriceOracle.sol";
 
 contract QiteRouter {
     QiteSwap public qiteSwap;
+    IPriceOracle public priceOracle;
 
-    constructor(address _qiteSwap) {
+    constructor(address _qiteSwap, address _priceOracle) {
         qiteSwap = QiteSwap(_qiteSwap);
+        priceOracle = IPriceOracle(_priceOracle);
     }
 
-    function addLiquidity(
-        address token1,
-        address token2,
-        uint256 amount1,
-        uint256 amount2
-    ) external {
-        address pool = qiteSwap.getPair(token1, token2);
-        require(pool != address(0), "Pair not found");
+    function addLiquidity(address token, uint256 tokenAmount) external payable {
+        address payable pool = payable(qiteSwap.getPair(token));
+        require(pool != address(0), "Pool not found");
 
-        IERC20(token1).transferFrom(msg.sender, pool, amount1);
-        IERC20(token2).transferFrom(msg.sender, pool, amount2);
+        uint256 ethwPrice = priceOracle.getLatestPrice(); // Scaled to 1e8
+        uint256 tokenPrice = 1e8; // Assuming token = $1
+        uint256 tokenRequired = (msg.value * ethwPrice) / tokenPrice;
 
-        QitePool(pool).addLiquidity(amount1, amount2);
+        require(tokenAmount >= tokenRequired, "Incorrect token ratio");
+        IERC20(token).transferFrom(msg.sender, pool, tokenRequired);
+
+        QitePool(pool).addLiquidity{value: msg.value}(tokenRequired);
     }
 
-    function swapTokens(
-        address tokenIn,
-        address tokenOut,
+    function swap(
+        bool isEthwToToken,
+        address token,
         uint256 amountIn,
         uint256 minAmountOut
-    ) external {
-        address pool = qiteSwap.getPair(tokenIn, tokenOut);
-        require(pool != address(0), "Pair not found");
+    ) external payable {
+        address payable pool = payable(qiteSwap.getPair(token));
+        require(pool != address(0), "Pool not found");
 
-        IERC20(tokenIn).transferFrom(msg.sender, pool, amountIn);
-
-        uint256 amountOut = QitePool(pool).swapTokens(
-            tokenIn,
-            tokenOut,
-            amountIn
-        );
-        require(amountOut >= minAmountOut, "Slippage exceeded");
-
-        IERC20(tokenOut).transfer(msg.sender, amountOut);
+        QitePool(pool).swapTokens{value: msg.value}(isEthwToToken, amountIn, minAmountOut);
     }
 }

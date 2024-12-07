@@ -5,13 +5,17 @@ async function main() {
 
   // Deploy mock ERC20 tokens
   console.log("Deploying Token1...");
-  const MockERC20 = await ethers.getContractFactory("MockERC20");
-  const token1 = await MockERC20.deploy("Token1", "TK1");
-  console.log("Token1 deployed to:", await token1.getAddress()); // Add await here
+  const MockERC20Factory = await ethers.getContractFactory("MockERC20");
+  const token1 = await MockERC20Factory.deploy("Token1", "TK1");
+  await token1.waitForDeployment();
+  const token1Address = await token1.getAddress();
+  console.log("Token1 deployed to:", token1Address);
 
   console.log("Deploying Token2...");
-  const token2 = await MockERC20.deploy("Token2", "TK2");
-  console.log("Token2 deployed to:", await token2.getAddress()); // Add await here
+  const token2 = await MockERC20Factory.deploy("Token2", "TK2");
+  await token2.waitForDeployment();
+  const token2Address = await token2.getAddress();
+  console.log("Token2 deployed to:", token2Address);
 
   // Mint initial tokens
   const mintAmount = ethers.parseEther("1000");
@@ -22,32 +26,36 @@ async function main() {
 
   // Deploy QiteSwap
   console.log("Deploying QiteSwap...");
-  const QiteSwap = await ethers.getContractFactory("QiteSwap");
-  const qiteSwap = await QiteSwap.deploy();
-  console.log("QiteSwap deployed to:", await qiteSwap.getAddress()); // Add await here
+  const QiteSwapFactory = await ethers.getContractFactory("QiteSwap");
+  const qiteSwap = await QiteSwapFactory.deploy();
+  await qiteSwap.waitForDeployment();
+  const qiteSwapAddress = await qiteSwap.getAddress();
+  console.log("QiteSwap deployed to:", qiteSwapAddress);
 
-  // Deploy QiteSwap
-  console.log("Deploying QiteSwap...");
-  const QiteSwap1 = await ethers.getContractFactory("QitePool");
-  const qiteSwap1 = await QiteSwap1.deploy(
-    token1,
-    token2,
-    "Liquidity-Token1-Token2",
-    "LP-TK1-TK2"
+  // Deploy QitePool
+  console.log("Deploying QitePool...");
+  const QitePoolFactory = await ethers.getContractFactory("QitePool");
+  const qitePool = await QitePoolFactory.deploy(
+    token1Address, // Address of Token1
+    "Liquidity-Token1-Token2", // Liquidity token name
+    "LP-TK1-TK2" // Liquidity token symbol
   );
-  console.log("QiteSwap deployed to:", await qiteSwap1.getAddress()); // Add await here
+  await qitePool.waitForDeployment();
+  const qitePoolAddress = await qitePool.getAddress();
+  console.log("QitePool deployed to:", qitePoolAddress);
 
-  // Create a pair
+  // Create a pool in QiteSwap
   console.log("Creating a liquidity pool...");
-  const tx = await qiteSwap.createPairs(
-    await token1.getAddress(),
-    await token2.getAddress(),
-    "Token1",
-    "Token2"
+  const tx = await qiteSwap.createPool(
+    token1Address, // Address of Token1
+    "Liquidity-Token1-Token2", // Liquidity token name
+    "LP-TK1-TK2" // Liquidity token symbol
   );
-  const receipt = await tx.wait();
-  const pairAddress = receipt.logs[0].address;
-  console.log("Liquidity pool created at:", pairAddress);
+  await tx.wait(); // Wait for the transaction to complete
+
+  // Retrieve the liquidity pool address
+  const poolAddress = await qiteSwap.getPair(token1Address);
+  console.log("Liquidity pool address:", poolAddress);
 }
 
 main()

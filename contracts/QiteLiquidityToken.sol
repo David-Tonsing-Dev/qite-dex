@@ -9,17 +9,11 @@ contract QiteLiquidityToken is ERC20, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    function mint(
-        address to,
-        uint256 amount
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function mint(address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _mint(to, amount);
     }
 
-    function burn(
-        address from,
-        uint256 amount
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function burn(address from, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _burn(from, amount);
     }
 }
