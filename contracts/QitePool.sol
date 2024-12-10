@@ -86,4 +86,12 @@ contract QitePool {
 
         emit Swap(msg.sender, amountIn, amountOut);
     }
+
+    function getTokenPrice() external view returns (uint256 priceInEthw, uint256 priceInToken) {
+        if (ethwReserve == 0 || tokenReserve == 0) {
+            return (0, 0); // Return zero prices if reserves are empty
+        }
+        priceInEthw = (ethwReserve * 1e18) / tokenReserve; // Token price in terms of ETHW
+        priceInToken = (tokenReserve * 1e18) / ethwReserve; // ETHW price in terms of token
+    }
 }
