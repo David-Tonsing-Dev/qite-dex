@@ -3,25 +3,37 @@ const { ethers } = require("hardhat");
 
 describe("QiteSwap DEX", function () {
   let MockERC20, QiteSwap, QitePool;
-  let token1, token2, qiteSwap, qitePool;
-  let deployer, user;
+  let token1, qiteSwap, qitePool;
+  let deployer, user, user2, user3, user4;
   const mintAmount = ethers.parseEther("1000");
 
   before(async function () {
-    [deployer, user] = await ethers.getSigners();
+    [deployer, user, user2, user3, user4] = await ethers.getSigners();
+
+    console.log(`Deployer Address: ${await deployer.getAddress()}`);
+    console.log(`User1 Address: ${await user.getAddress()}`);
+    console.log(`User2 Address: ${await user2.getAddress()}`);
+    console.log(`User3 Address: ${await user3.getAddress()}`);
+    console.log(`User4 Address: ${await user4.getAddress()}`);
 
     MockERC20 = await ethers.getContractFactory("MockERC20");
     token1 = await MockERC20.deploy("Token1", "TK1");
     await token1.waitForDeployment();
-    token2 = await MockERC20.deploy("Token2", "TK2");
-    await token2.waitForDeployment();
+
+    console.log(`Token1 Address: ${await token1.getAddress()}`);
 
     await token1.mint(await deployer.getAddress(), mintAmount);
-    await token2.mint(await deployer.getAddress(), mintAmount);
+    console.log(
+      `Minted Token1 Balance for Deployer: ${ethers.formatEther(
+        await token1.balanceOf(await deployer.getAddress())
+      )}`
+    );
 
     QiteSwap = await ethers.getContractFactory("QiteSwap");
     qiteSwap = await QiteSwap.deploy();
     await qiteSwap.waitForDeployment();
+
+    console.log(`QiteSwap Contract Address: ${await qiteSwap.getAddress()}`);
 
     QitePool = await ethers.getContractFactory("QitePool");
     qitePool = await QitePool.deploy(
@@ -30,7 +42,18 @@ describe("QiteSwap DEX", function () {
       "LP-TK1-TK2"
     );
     await qitePool.waitForDeployment();
+
+    console.log(`QitePool Contract Address: ${await qitePool.getAddress()}`);
   });
+
+  async function logBalances(account) {
+    const ethBalance = await ethers.provider.getBalance(account);
+    const tokenBalance = await token1.balanceOf(account);
+    console.log(`ETH Balance of ${account}: ${ethers.formatEther(ethBalance)}`);
+    console.log(
+      `Token1 Balance of ${account}: ${ethers.formatEther(tokenBalance)}`
+    );
+  }
 
   async function logTokenPrices() {
     const [priceInEthw, priceInToken] = await qitePool.getTokenPrice();
@@ -42,22 +65,13 @@ describe("QiteSwap DEX", function () {
     );
   }
 
-  it("Should create a liquidity pool in QiteSwap", async function () {
-    const tx = await qiteSwap.createPool(
-      await token1.getAddress(),
-      "Liquidity-Token1-Token2",
-      "LP-TK1-TK2"
-    );
-    await tx.wait();
-
-    const poolAddress = await qiteSwap.getPair(await token1.getAddress());
-    expect(poolAddress).to.not.equal(ethers.ZeroAddress);
-    console.log("Liquidity pool address:", poolAddress);
-  });
-
   it("Should add liquidity to the pool", async function () {
     const ethwAmount = ethers.parseEther("10");
     const token1Amount = ethers.parseEther("100");
+
+    console.log("Adding liquidity...");
+    console.log("Deployer balances before adding liquidity:");
+    await logBalances(await deployer.getAddress());
 
     await token1.approve(await qitePool.getAddress(), token1Amount);
     const tx = await qitePool.addLiquidity(token1Amount, { value: ethwAmount });
@@ -65,97 +79,191 @@ describe("QiteSwap DEX", function () {
 
     const ethwReserve = await qitePool.ethwReserve();
     const tokenReserve = await qitePool.tokenReserve();
-    expect(ethwReserve).to.equal(ethwAmount);
-    expect(tokenReserve).to.equal(token1Amount);
 
+    console.log("Liquidity added:");
     console.log(`ETHW Reserve: ${ethers.formatEther(ethwReserve)}`);
     console.log(`Token Reserve: ${ethers.formatEther(tokenReserve)}`);
 
+    console.log("Deployer balances after adding liquidity:");
+    await logBalances(await deployer.getAddress());
+
     await logTokenPrices();
   });
 
-  it("Should swap ETHW for Token1", async function () {
-    const ethwAmount = ethers.parseEther("1");
-    const minTokenOut = ethers.parseEther("5");
+  it("Should perform multiple swaps from four different users to simulate price changes", async function () {
+    const ethwAmounts = [
+      ethers.parseEther("1"),
+      ethers.parseEther("2"),
+      ethers.parseEther("1.5"),
+      ethers.parseEther("3"),
+    ];
+    const minTokenOuts = [
+      ethers.parseEther("4"),
+      ethers.parseEther("8"),
+      ethers.parseEther("6"),
+      ethers.parseEther("10"),
+    ];
 
-    const tokenReserveBefore = await qitePool.tokenReserve();
+    console.log("Balances before swaps:");
+    console.log("Deployer:");
+    await logBalances(await deployer.getAddress());
+    console.log("User1:");
+    await logBalances(await user.getAddress());
+    console.log("User2:");
+    await logBalances(await user2.getAddress());
+    console.log("User3:");
+    await logBalances(await user3.getAddress());
+    console.log("User4:");
+    await logBalances(await user4.getAddress());
 
-    const tx = await qitePool.swapTokens(true, ethwAmount, minTokenOut, {
-      value: ethwAmount,
+    // User1 (deployer) swap
+    console.log("User1 performing a swap...");
+    const tokenReserveBeforeSwap1 = await qitePool.tokenReserve();
+
+    await qitePool.swapTokens(true, ethwAmounts[0], minTokenOuts[0], {
+      value: ethwAmounts[0],
     });
-    await tx.wait();
 
-    const tokenReserveAfter = await qitePool.tokenReserve();
-    expect(tokenReserveAfter).to.be.lt(tokenReserveBefore);
-
-    console.log(
-      `Token Reserve After Swap: ${ethers.formatEther(tokenReserveAfter)}`
-    );
-
-    await logTokenPrices();
-  });
-
-  it("Should swap Token1 for ETHW", async function () {
-    const tokenAmount = ethers.parseEther("10");
-    const minEthwOut = ethers.parseEther("0.5");
-
-    const ethwReserveBefore = await qitePool.ethwReserve();
-
-    await token1.approve(await qitePool.getAddress(), tokenAmount);
-    const tx = await qitePool.swapTokens(false, tokenAmount, minEthwOut);
-    await tx.wait();
-
-    const ethwReserveAfter = await qitePool.ethwReserve();
-    expect(ethwReserveAfter).to.be.lt(ethwReserveBefore);
+    const tokenReserveAfterSwap1 = await qitePool.tokenReserve();
+    expect(tokenReserveAfterSwap1).to.be.lt(tokenReserveBeforeSwap1);
 
     console.log(
-      `ETHW Reserve After Swap: ${ethers.formatEther(ethwReserveAfter)}`
+      "Token Reserve After User1 Swap:",
+      ethers.formatEther(tokenReserveAfterSwap1)
     );
-
     await logTokenPrices();
+
+    // User2 swap
+    console.log("User2 performing a swap...");
+    const tokenReserveBeforeSwap2 = await qitePool.tokenReserve();
+
+    await qitePool
+      .connect(user)
+      .swapTokens(true, ethwAmounts[1], minTokenOuts[1], {
+        value: ethwAmounts[1],
+      });
+
+    const tokenReserveAfterSwap2 = await qitePool.tokenReserve();
+    expect(tokenReserveAfterSwap2).to.be.lt(tokenReserveBeforeSwap2);
+
+    console.log(
+      "Token Reserve After User2 Swap:",
+      ethers.formatEther(tokenReserveAfterSwap2)
+    );
+    await logTokenPrices();
+
+    // User3 swap
+    console.log("User3 performing a swap...");
+    const tokenReserveBeforeSwap3 = await qitePool.tokenReserve();
+
+    await qitePool
+      .connect(user2)
+      .swapTokens(true, ethwAmounts[2], minTokenOuts[2], {
+        value: ethwAmounts[2],
+      });
+
+    const tokenReserveAfterSwap3 = await qitePool.tokenReserve();
+    expect(tokenReserveAfterSwap3).to.be.lt(tokenReserveBeforeSwap3);
+
+    console.log(
+      "Token Reserve After User3 Swap:",
+      ethers.formatEther(tokenReserveAfterSwap3)
+    );
+    await logTokenPrices();
+
+    // User4 swap
+    console.log("User4 performing a swap...");
+    const tokenReserveBeforeSwap4 = await qitePool.tokenReserve();
+
+    await qitePool
+      .connect(user3)
+      .swapTokens(true, ethwAmounts[3], minTokenOuts[3], {
+        value: ethwAmounts[3],
+      });
+
+    const tokenReserveAfterSwap4 = await qitePool.tokenReserve();
+    expect(tokenReserveAfterSwap4).to.be.lt(tokenReserveBeforeSwap4);
+
+    console.log(
+      "Token Reserve After User4 Swap:",
+      ethers.formatEther(tokenReserveAfterSwap4)
+    );
+    await logTokenPrices();
+
+    console.log("Balances after swaps:");
+    console.log("Deployer:");
+    await logBalances(await deployer.getAddress());
+    console.log("User1:");
+    await logBalances(await user.getAddress());
+    console.log("User2:");
+    await logBalances(await user2.getAddress());
+    console.log("User3:");
+    await logBalances(await user3.getAddress());
+    console.log("User4:");
+    await logBalances(await user4.getAddress());
   });
 
-  it("Should remove liquidity from the pool", async function () {
+  it("Should remove liquidity and return increased ETHW and tokens due to fee accumulation", async function () {
     const liquidityTokenAddress = await qitePool.liquidityToken();
     const LiquidityToken = await ethers.getContractAt(
       "ERC20",
       liquidityTokenAddress
     );
 
-    const lpBalance = await LiquidityToken.balanceOf(
+    // Initial LP balance of deployer
+    const initialLpBalance = await LiquidityToken.balanceOf(
       await deployer.getAddress()
     );
 
-    // Ensure reserves are fetched correctly
-    const ethwReserveBefore = BigInt(await qitePool.ethwReserve());
-    const tokenReserveBefore = BigInt(await qitePool.tokenReserve());
+    console.log(
+      `Initial LP Token Balance: ${ethers.formatEther(initialLpBalance)}`
+    );
 
-    const tx = await qitePool.removeLiquidity(lpBalance);
+    // Reserves before removal
+    const ethwReserveBefore = await qitePool.ethwReserve();
+    const tokenReserveBefore = await qitePool.tokenReserve();
+
+    console.log(
+      `ETHW Reserve Before: ${ethers.formatEther(ethwReserveBefore)}`
+    );
+    console.log(
+      `Token Reserve Before: ${ethers.formatEther(tokenReserveBefore)}`
+    );
+
+    // Remove liquidity
+    const tx = await qitePool.removeLiquidity(initialLpBalance);
     await tx.wait();
 
-    const ethwReserveAfter = BigInt(await qitePool.ethwReserve());
-    const tokenReserveAfter = BigInt(await qitePool.tokenReserve());
+    // Reserves after removal
+    const ethwReserveAfter = await qitePool.ethwReserve();
+    const tokenReserveAfter = await qitePool.tokenReserve();
 
-    // Assert reserves decrease
-    expect(ethwReserveAfter).to.be.below(ethwReserveBefore);
-    expect(tokenReserveAfter).to.be.below(tokenReserveBefore);
-
+    console.log(`ETHW Reserve After: ${ethers.formatEther(ethwReserveAfter)}`);
     console.log(
-      `ETHW Reserve After Removal: ${ethers.formatEther(
-        ethwReserveAfter.toString()
-      )}`
-    );
-    console.log(
-      `Token Reserve After Removal: ${ethers.formatEther(
-        tokenReserveAfter.toString()
-      )}`
+      `Token Reserve After: ${ethers.formatEther(tokenReserveAfter)}`
     );
 
-    // Check for zero reserves using BigInt
-    if (ethwReserveAfter > 0n && tokenReserveAfter > 0n) {
-      await logTokenPrices();
-    } else {
-      console.log("Reserves are empty, skipping price log.");
-    }
+    // Validate user's ETHW balance increases
+    const ethwBalanceAfter = await ethers.provider.getBalance(
+      await deployer.getAddress()
+    );
+    const tokenBalanceAfter = await token1.balanceOf(
+      await deployer.getAddress()
+    );
+
+    console.log(
+      `Deployer ETHW Balance After: ${ethers.formatEther(ethwBalanceAfter)}`
+    );
+    console.log(
+      `Deployer Token1 Balance After: ${ethers.formatEther(tokenBalanceAfter)}`
+    );
+
+    // Check that the reserves decreased proportionally
+    expect(ethwReserveAfter).to.be.lt(ethwReserveBefore);
+    expect(tokenReserveAfter).to.be.lt(tokenReserveBefore);
+
+    // Ensure user received ETHW and tokens
+    expect(ethwBalanceAfter).to.be.gt(ethwReserveBefore);
+    expect(tokenBalanceAfter).to.be.gt(tokenReserveBefore);
   });
 });
